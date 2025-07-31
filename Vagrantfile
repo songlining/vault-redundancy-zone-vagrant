@@ -1,6 +1,29 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
+# Provider configuration - Set this to switch between providers
+# Options: "virtualbox", "vmware", or "qemu"
+PROVIDER = ENV['VAGRANT_PROVIDER'] || "vmware"  # Default to vmware
+
+# Box configuration based on provider
+BOX_CONFIG = {
+  "virtualbox" => {
+    "box" => "bento/ubuntu-20.04",  # Official Ubuntu 22.04 ARM64 for VirtualBox
+    "memory" => 3072,
+    "cpus" => 2
+  },
+  "vmware" => {
+    "box" => "gyptazy/ubuntu22.04-arm64",
+    "memory" => 3072,
+    "cpus" => 2
+  },
+  "qemu" => {
+    "box" => "roboxes/ubuntu2204",  # Ubuntu 22.04 ARM64 for QEMU
+    "memory" => "3G",  # QEMU uses string format
+    "cpus" => 2
+  }
+}
+
 # Define the cluster configuration
 CLUSTER_CONFIG = {
   "rz1" => {
@@ -44,7 +67,8 @@ LAST_ZONE = CLUSTER_CONFIG.keys.last
 LAST_NODE = CLUSTER_CONFIG[LAST_ZONE]["nodes"].last
 
 Vagrant.configure("2") do |config|
-  config.vm.box = "gyptazy/ubuntu22.04-arm64"
+  # Set box based on provider
+  config.vm.box = BOX_CONFIG[PROVIDER]["box"]
   config.vm.box_check_update = false
   config.vm.boot_timeout = 600  # 10 minutes timeout
   
@@ -54,21 +78,61 @@ Vagrant.configure("2") do |config|
   config.ssh.forward_agent = true
   config.ssh.keep_alive = true
   
-  # Shared configuration for all VMs
+  # VMware provider configuration
   config.vm.provider "vmware_desktop" do |vmware|
-    vmware.memory = 1024 * 3
-    vmware.cpus = 4
+    vmware.memory = BOX_CONFIG[PROVIDER]["memory"]
+    vmware.cpus = BOX_CONFIG[PROVIDER]["cpus"]
     vmware.gui = false
     vmware.vmx["ethernet0.virtualDev"] = "vmxnet3"
     vmware.vmx["tools.syncTime"] = "TRUE"
     vmware.vmx["time.synchronize.continue"] = "TRUE"
-    # Add this line to fix the networking issue
     vmware.vmx["ethernet0.pcislotnumber"] = "160"
-    # Additional networking fixes
     vmware.allowlist_verified = true
-    # Add retry logic for network issues
     vmware.vmx["ethernet0.startConnected"] = "TRUE"
     vmware.vmx["ethernet0.connectionType"] = "nat"
+  end
+  
+  # VirtualBox provider configuration
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = BOX_CONFIG[PROVIDER]["memory"]
+    vb.cpus = BOX_CONFIG[PROVIDER]["cpus"]
+    vb.gui = false
+    
+    # VirtualBox specific optimizations
+    vb.customize ["modifyvm", :id, "--natdnshostresolver1", "on"]
+    vb.customize ["modifyvm", :id, "--natdnsproxy1", "on"]
+    vb.customize ["modifyvm", :id, "--nictype1", "virtio"]
+    vb.customize ["modifyvm", :id, "--nictype2", "virtio"]
+    
+    # Enable nested virtualization if supported
+    vb.customize ["modifyvm", :id, "--nested-hw-virt", "on"]
+    
+    # Optimize performance
+    vb.customize ["modifyvm", :id, "--ioapic", "on"]
+    vb.customize ["modifyvm", :id, "--pae", "on"]
+  end
+
+  # QEMU provider configuration
+  config.vm.provider "qemu" do |qe|
+    qe.memory = BOX_CONFIG[PROVIDER]["memory"]
+    qe.smp = BOX_CONFIG[PROVIDER]["cpus"]
+    qe.arch = "aarch64"
+    qe.machine = "virt,accel=hvf,highmem=off"
+    qe.cpu = "cortex-a72"
+    qe.net_device = "virtio-net-device"
+    qe.drive_interface = "virtio"
+    qe.ssh_port = "50022"
+    qe.qemu_bin = "/opt/homebrew/bin/qemu-system-aarch64"
+    qe.qemu_dir = "/opt/homebrew/share/qemu"
+    
+    # Use user-mode networking to avoid privilege requirements
+    qe.extra_netdev_args = "restrict=off"
+    qe.extra_qemu_args = [
+      "-parallel", "null",
+      "-monitor", "none",
+      "-display", "none",
+      "-vga", "none"
+    ]
   end
 
   # Create VMs based on cluster configuration

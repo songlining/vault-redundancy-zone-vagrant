@@ -40,9 +40,14 @@ cp /vagrant/vault.hclic /etc/vault.d/
 chown vault:vault /etc/vault.d/vault.hclic
 chmod 640 /etc/vault.d/vault.hclic
 
+NON_VOTER_CONFIG=""
+if [ "$NODE_TYPE" = "nonvoting" ]; then
+  NON_VOTER_CONFIG='non_voter = true'
+fi
+
 # Create Vault configuration with NODE_TYPE consideration
 # Create Vault configuration
-cat > /etc/vault.d/vault.hcl << EOF
+cat > /etc/vault.d/vault.hcl <<EOF
 ui = true
 cluster_name = "vault-cluster"
 disable_mlock = true
@@ -53,9 +58,9 @@ cluster_addr = "http://$(hostname -I | awk '{print $2}'):8201"
 storage "raft" {
   path = "/opt/vault/data"
   node_id = "$HOSTNAME"
-  
-  # Set voting based on NODE_TYPE
-  $(if [ "$NODE_TYPE" = "nonvoting" ]; then echo "non_voter = true"; fi)
+
+  autopilot_redundancy_zone = "$RZ"
+  $NON_VOTER_CONFIG
   
   retry_join {
     leader_api_addr = "http://192.168.56.10:8200"
@@ -66,16 +71,14 @@ storage "raft" {
   retry_join {
     leader_api_addr = "http://192.168.56.30:8200"
   }
-  
-  autopilot {
-    cleanup_dead_servers = true
-    last_contact_threshold = "10s"
-    max_trailing_logs = 1000
-    min_quorum = 3
-    server_stabilization_time = "10s"
-  }
-  
-  redundancy_zone = "$RZ"
+}
+
+autopilot {
+  cleanup_dead_servers = true
+  last_contact_threshold = "10s"
+  max_trailing_logs = 1000
+  min_quorum = 3
+  server_stabilization_time = "10s"
 }
 
 license_path = "/etc/vault.d/vault.hclic"
@@ -85,11 +88,18 @@ listener "tcp" {
   tls_disable = true
 }
 
+log_level = "info"
+
+audit "file" {
+  path = "/var/log/vault_audit.log"
+}
+
 EOF
 
 # Set proper permissions
-chown vault:vault /etc/vault.d/vault.hcl
-chmod 640 /etc/vault.d/vault.hcl
+touch /var/log/vault_audit.log
+chown vault:vault /etc/vault.d/vault.hcl /var/log/vault_audit.log
+chmod 640 /etc/vault.d/vault.hcl /var/log/vault_audit.log
 
 # Create systemd service file
 cat > /etc/systemd/system/vault.service << EOF
@@ -155,7 +165,15 @@ if [ -f "/vagrant/init.json" ]; then
     echo "Found init.json, extracting unseal keys..."
     UNSEAL_KEY_1=$(jq -r '.unseal_keys_b64[0]' /vagrant/init.json)
     UNSEAL_KEY_2=$(jq -r '.unseal_keys_b64[1]' /vagrant/init.json)
-fi
+    UNSEAL_KEY_3=$(jq -r '.unseal_keys_b64[2]' /vagrant/init.json)
+    
+    # Unseal Vault
+    echo "Unsealing Vault..."
+    vault operator unseal "$UNSEAL_KEY_1"
+    vault operator unseal "$UNSEAL_KEY_2"
+    vault operator unseal "$UNSEAL_KEY_3"
+    
+    echo "Vault unsealing complete!"
 else
     echo "Unseal keys not found at /vagrant/init.json"
     echo "Please initialize Vault first and save the unseal keys"
