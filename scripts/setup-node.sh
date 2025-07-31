@@ -2,8 +2,10 @@
 
 set -e
 
+# At the top of the script, the parameters are:
 RZ=$1
 NODE_TYPE=$2
+CLUSTER_NAME=$3  # This is already being passed but not used!
 HOSTNAME=$(hostname)
 
 echo "Setting up $HOSTNAME as $NODE_TYPE node in $RZ"
@@ -49,7 +51,7 @@ fi
 # Create Vault configuration
 cat > /etc/vault.d/vault.hcl <<EOF
 ui = true
-cluster_name = "vault-cluster"
+cluster_name = "$CLUSTER_NAME"
 disable_mlock = true
 
 api_addr = "http://$(hostname -I | awk '{print $2}'):8200"
