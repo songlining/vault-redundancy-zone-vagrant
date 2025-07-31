@@ -1,7 +1,0 @@
-Key                              Value
----                              -----
-wrapping_token:                  eyJhbGciOiJFUzUxMiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3NvciI6IiIsImFkZHIiOiJodHRwOi8vMTkyLjE2OC41Ni4xMDo4MjAwIiwiZXhwIjoxNzU0MDAwNDQ2LCJpYXQiOjE3NTM5OTg2NDYsImp0aSI6Imh2cy5MZVd0UVZWV1pQM0RqckdoRjhjRzJpRVIiLCJuYmYiOjE3NTM5OTg2NDEsInR5cGUiOiJ3cmFwcGluZyJ9.AcT_tyAvZh2KIgkbYAX8eYB8S8GSWNFs7reZfrORo2KczwqViQWIq6Azq9q79nqh-rzR-UxjBHVqzUjtCLy_76t3ATC4D2y5SyysLECZg7u3_oUxUkvh_KE18DuhswRvA9Z3DPAWgNETGFMSsXFHdN7N5dXlkCRV72WzZWJeJRfFy4eC
-wrapping_accessor:               aw9U1Enk5DsRulgG6K06cNfr
-wrapping_token_ttl:              30m
-wrapping_token_creation_time:    2025-07-31 21:50:46.640463403 +0000 UTC
-wrapping_token_creation_path:    sys/replication/dr/primary/secondary-token
