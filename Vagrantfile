@@ -6,6 +6,7 @@
 PROVIDER = ENV['VAGRANT_PROVIDER'] || "vmware"  # Default to vmware
 
 # Box configuration based on provider
+# only vmware setting works for now
 BOX_CONFIG = {
   "virtualbox" => {
     "box" => "bento/ubuntu-20.04",  # Official Ubuntu 22.04 ARM64 for VirtualBox
@@ -24,7 +25,7 @@ BOX_CONFIG = {
   }
 }
 
-# Define the cluster configuration
+# Define the cluster configuration, modify to add/remove nodes
 CLUSTER_CONFIG = {
   "rz1" => {
     "base_ip" => "192.168.56.10",
