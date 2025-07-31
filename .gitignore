@@ -6,14 +6,24 @@
 vault.hclic
 
 # Generated Vault files (contain sensitive data)
-init.json
+# Vault secrets and tokens
+*-root-token.txt
+*-init.json
+dr-secondary-token.txt
 root-token.txt
+init.json
+unseal-keys.txt
 init-output.txt
 
-# Vault data directories (if any)
-data/
+# Any file containing 'token' or 'key'
+*token*
+*key*
+*.pem
+*.key
+
+# Vault data directories
 vault-data/
-*.db
+*.hclic
 
 # SSH keys
 *.pem
