@@ -19,7 +19,7 @@ BOX_CONFIG = {
   },
   "vmware" => {
     "box" => "gyptazy/ubuntu22.04-arm64",
-    "memory" => 3072,
+    "memory" => 1024*2,
     "cpus" => 2
   },
   "qemu" => {
@@ -36,8 +36,8 @@ CLUSTER_PRI_CONFIG = {
     "rz1" => {
       "base_ip" => "192.168.56.10",
       "nodes" => [
-        { "name" => "vault-pri-rz1-voting", "type" => "voting", "ip_offset" => 0 },
-        # { "name" => "vault-pri-rz1-nonvoting", "type" => "nonvoting", "ip_offset" => 1 }
+        { "name" => "vault-pri-rz1-s1", "type" => "voting", "ip_offset" => 0 },
+        { "name" => "vault-pri-rz1-s2", "type" => "nonvoting", "ip_offset" => 1 }
       ]
     },
     # "rz2" => {
@@ -62,8 +62,8 @@ CLUSTER_DR_CONFIG = {
     "rz1" => {
       "base_ip" => "192.168.56.110",
       "nodes" => [
-        { "name" => "vault-dr-rz1-voting", "type" => "voting", "ip_offset" => 0 },
-        # { "name" => "vault-dr-rz1-nonvoting", "type" => "nonvoting", "ip_offset" => 1 }
+        { "name" => "vault-dr-rz1-s1", "type" => "voting", "ip_offset" => 0 },
+        { "name" => "vault-dr-rz1-s2", "type" => "nonvoting", "ip_offset" => 1 }
       ]
     },
     # "rz2" => {
@@ -193,7 +193,8 @@ end
 # INITIALIZATION SCRIPTS
 # =============================================================================
 
-def generate_primary_initialization_script(all_ips, cluster_config)
+# Generic cluster initialization function (used for both PRI and DR)
+def generate_cluster_initialization_script(all_ips, cluster_config)
   first_node_name = cluster_config["zones"].values.first['nodes'].first['name']
   cluster_name = cluster_config["cluster_name"]
   
@@ -276,112 +277,83 @@ def generate_primary_initialization_script(all_ips, cluster_config)
       fi
     done
     
-    # Enable DR replication on primary cluster
-    echo "Enabling DR replication on #{cluster_name}..."
-    export VAULT_ADDR="http://#{all_ips.first}:8200"
-    export VAULT_TOKEN="$ROOT_TOKEN"
-    
-    # Enable DR primary
-    vault write -f sys/replication/dr/primary/enable
-    
-    # Generate secondary token for DR cluster
-    vault write sys/replication/dr/primary/secondary-token id="cluster-dr" > /vagrant/dr-secondary-token.txt
-    
     echo "\n=== #{cluster_name} Vault Cluster Ready ==="
     echo "Web UI: http://#{all_ips.first}:8200"
     echo "Root token: $(cat /vagrant/#{cluster_name}-root-token.txt)"
-    echo "DR replication enabled - secondary token saved to /vagrant/dr-secondary-token.txt"
     echo "\nTo access #{cluster_name}:"
     echo "  vagrant ssh #{first_node_name}"
     echo "  export VAULT_ADDR=http://localhost:8200"
     echo "  export VAULT_TOKEN=$(cat /vagrant/#{cluster_name}-root-token.txt)"
     echo "  vault status"
+    
+    # Create cluster ready marker
+    touch /vagrant/#{cluster_name}-ready
   SHELL
 end
 
-def generate_dr_initialization_script(all_ips, cluster_config)
-  first_node_name = cluster_config["zones"].values.first['nodes'].first['name']
-  cluster_name = cluster_config["cluster_name"]
-  
+# DR configuration script (runs after both clusters are ready)
+def generate_dr_configuration_script()
   <<~SHELL
-    echo "All #{cluster_name} nodes provisioned. Initializing DR Vault cluster..."
+    echo "=== Configuring DR Replication ==="
     
-    # Wait for all Vault services to be ready
-    echo "Waiting for all #{cluster_name} Vault nodes to be ready..."
-    for ip in #{all_ips.join(' ')}; do
-      echo "Checking $ip..."
-      while ! curl -s http://$ip:8200/v1/sys/health >/dev/null 2>&1; do
-        echo "Waiting for $ip to be ready..."
-        sleep 5
-      done
-      echo "$ip is ready"
-    done
-    
-    echo "All #{cluster_name} nodes ready. Setting up DR replication..."
-    
-    # Wait for primary cluster to be ready and DR token to be available
-    echo "Waiting for primary cluster DR token..."
-    while [ ! -f "/vagrant/dr-secondary-token.txt" ]; do
-      echo "Waiting for DR secondary token from primary cluster..."
+    # Wait for both clusters to be ready
+    echo "Waiting for both clusters to be ready..."
+    while [ ! -f "/vagrant/cluster-pri-ready" ] || [ ! -f "/vagrant/cluster-dr-ready" ]; do
+      echo "Waiting for cluster initialization to complete..."
       sleep 10
     done
     
-    # Wait for primary cluster initialization to complete
-    echo "Waiting for primary cluster to be fully initialized..."
-    while [ ! -f "/vagrant/cluster-pri-init.json" ]; do
-      echo "Waiting for primary cluster initialization..."
-      sleep 10
-    done
+    echo "Both clusters are ready. Configuring DR replication..."
+    
+    # Step 3: Configure Primary cluster for DR
+    echo "=== Step 3: Configuring Primary cluster as DR Primary ==="
+    export VAULT_ADDR="http://#{PRI_CLUSTER_IPS.first}:8200"
+    export VAULT_TOKEN=$(cat /vagrant/cluster-pri-root-token.txt)
+    
+    echo "Enabling DR replication on Primary cluster..."
+    vault write -f sys/replication/dr/primary/enable
+    
+    # Generate secondary token for DR cluster
+    echo "Generating DR secondary token..."
+    vault write sys/replication/dr/primary/secondary-token id="cluster-dr" > /vagrant/dr-secondary-token.txt
+    
+    echo "Primary cluster configured as DR Primary"
+    
+    # Step 4: Configure DR cluster as DR Secondary
+    echo "=== Step 4: Configuring DR cluster as DR Secondary ==="
     
     # Extract the secondary token
-    SECONDARY_TOKEN=$(grep 'wrapping_token' /vagrant/dr-secondary-token.txt | awk '{print $2}')
+    SECONDARY_TOKEN=$(grep 'wrapping_token:' /vagrant/dr-secondary-token.txt | awk '{print $2}')
     
     if [ -z "$SECONDARY_TOKEN" ]; then
-      echo "ERROR: Could not extract secondary token from primary cluster"
+      echo "ERROR: Could not extract secondary token"
       exit 1
     fi
-
-    # CRITICAL: Set root token for authentication FIRST
-    export VAULT_ADDR="http://#{all_ips.first}:8200"
-    export VAULT_TOKEN=$(jq -r '.root_token' /vagrant/cluster-pri-init.json)
-    echo "Using root token for DR operations"
     
-    echo "Temporarily unsealing DR node to enable DR secondary..."
-    vault operator unseal $(jq -r '.unseal_keys_b64[0]' /vagrant/cluster-pri-init.json) 
-    vault operator unseal $(jq -r '.unseal_keys_b64[1]' /vagrant/cluster-pri-init.json) 
+    # Configure DR cluster as secondary
+    export VAULT_ADDR="http://#{DR_CLUSTER_IPS.first}:8200"
+    export VAULT_TOKEN=$(cat /vagrant/cluster-dr-root-token.txt)
     
-    # Wait for node to be unsealed
-    echo "Waiting for node to be unsealed..."
-    while true; do
-      seal_status=$(curl -s http://#{all_ips.first}:8200/v1/sys/seal-status 2>/dev/null || echo "{}")
-      if echo "$seal_status" | jq -e '.sealed == false' >/dev/null 2>&1; then
-        echo "Node is unsealed and ready for DR operations"
-        break
-      fi
-      sleep 5
-    done
+    echo "Converting DR cluster to DR Secondary..."
     
-    # CRITICAL: Check if this is already a primary and demote first
-    echo "Checking current replication status..."
+    # Check current replication status and demote if needed
     replication_status=$(vault read -format=json sys/replication/dr/status 2>/dev/null || echo '{}')
     current_mode=$(echo "$replication_status" | jq -r '.data.mode // "disabled"')
     
-    if [ "$current_mode" = "primary" ]; then
-      echo "Node is currently primary, demoting first..."
-      vault write -f sys/replication/dr/primary/demote
+    if [ "$current_mode" = "primary" ] || [ "$current_mode" = "disabled" ]; then
+      echo "DR cluster is currently $current_mode, demoting to prepare for DR secondary..."
+      vault write -f sys/replication/dr/primary/demote 2>/dev/null || echo "Demotion completed or not needed"
       echo "Waiting for demotion to complete..."
-      sleep 60
+      sleep 30
     fi
     
-    echo "Enabling DR secondary replication on #{cluster_name}..."
-    echo "This will reconfigure the cluster as DR secondary"
-    
-    # Enable DR secondary (expect some paths to be disabled after this)
+    echo "Enabling DR secondary replication..."
     if vault write sys/replication/dr/secondary/enable token="$SECONDARY_TOKEN" 2>/dev/null; then
       echo "DR secondary replication enabled successfully"
     else
       # Check if it's actually enabled despite the error
-      if vault read sys/replication/dr/status | grep -q "mode.*secondary"; then
+      sleep 10
+      if vault read sys/replication/dr/status 2>/dev/null | grep -q "mode.*secondary"; then
         echo "DR secondary replication enabled successfully (some paths now disabled as expected)"
       else
         echo "Failed to enable DR secondary replication"
@@ -393,17 +365,13 @@ def generate_dr_initialization_script(all_ips, cluster_config)
     echo "Waiting for DR replication to sync..."
     sleep 30
     
-    # Check replication status
-    vault read sys/replication/dr/status
-    
-    echo "\n=== #{cluster_name} DR Cluster Ready ==="
-    echo "Web UI: http://#{all_ips.first}:8200"
-    echo "DR replication configured as secondary"
-    echo "\nTo access #{cluster_name}:"
-    echo "  vagrant ssh #{first_node_name}"
+    echo "\n=== DR Configuration Complete ==="
+    echo "Primary Cluster: http://#{PRI_CLUSTER_IPS.first}:8200 (DR Primary)"
+    echo "DR Cluster: http://#{DR_CLUSTER_IPS.first}:8200 (DR Secondary)"
+    echo "\nDR replication is now active between the clusters"
+    echo "\nTo promote DR cluster in case of disaster:"
+    echo "  vagrant ssh vault-dr-rz1-s1"
     echo "  export VAULT_ADDR=http://localhost:8200"
-    echo "  vault status"
-    echo "\nTo promote DR cluster to primary (in case of disaster):"
     echo "  vault write -f sys/replication/dr/secondary/promote"
   SHELL
 end
@@ -419,7 +387,7 @@ Vagrant.configure("2") do |config|
   config.vm.boot_timeout = 600  # 10 minutes timeout
   
   # Add delays between VM starts (global)
-  config.vm.provision "shell", inline: "sleep 60", run: "always"
+  # config.vm.provision "shell", inline: "sleep 60", run: "always"
   
   # SSH configuration
   config.ssh.connect_timeout = 600  # Increase to 10 minutes
@@ -439,11 +407,14 @@ Vagrant.configure("2") do |config|
         node.vm.hostname = node_config["name"]
         node_ip = calculate_ip(zone_config["base_ip"], node_config["ip_offset"])
         node.vm.network "private_network", ip: node_ip
-        node.vm.provision "shell", path: "scripts/setup-node.sh", args: [zone_name, node_config["type"], CLUSTER_PRI_CONFIG["cluster_name"]]
         
-        # Add initialization script to the last node of primary cluster
+        # Pass primary cluster IPs for retry_join
+        retry_join_ips = PRI_CLUSTER_IPS.join(",")
+        node.vm.provision "shell", path: "scripts/setup-node.sh", args: [zone_name, node_config["type"], CLUSTER_PRI_CONFIG["cluster_name"], retry_join_ips]
+        
+        # Add cluster initialization script to the last node of primary cluster
         if zone_name == PRI_LAST_ZONE && node_config == PRI_LAST_NODE
-          node.vm.provision "shell", inline: generate_primary_initialization_script(PRI_CLUSTER_IPS, CLUSTER_PRI_CONFIG)
+          node.vm.provision "shell", inline: generate_cluster_initialization_script(PRI_CLUSTER_IPS, CLUSTER_PRI_CONFIG)
         end
       end
     end
@@ -456,11 +427,17 @@ Vagrant.configure("2") do |config|
         node.vm.hostname = node_config["name"]
         node_ip = calculate_ip(zone_config["base_ip"], node_config["ip_offset"])
         node.vm.network "private_network", ip: node_ip
-        node.vm.provision "shell", path: "scripts/setup-node.sh", args: [zone_name, node_config["type"], CLUSTER_DR_CONFIG["cluster_name"]]
         
-        # Add DR initialization script to the last node of DR cluster
+        # Pass DR cluster IPs for retry_join
+        retry_join_ips = DR_CLUSTER_IPS.join(",")
+        node.vm.provision "shell", path: "scripts/setup-node.sh", args: [zone_name, node_config["type"], CLUSTER_DR_CONFIG["cluster_name"], retry_join_ips]
+        
+        # Add cluster initialization script to the last node of DR cluster
         if zone_name == DR_LAST_ZONE && node_config == DR_LAST_NODE
-          node.vm.provision "shell", inline: generate_dr_initialization_script(DR_CLUSTER_IPS, CLUSTER_DR_CONFIG)
+          node.vm.provision "shell", inline: generate_cluster_initialization_script(DR_CLUSTER_IPS, CLUSTER_DR_CONFIG)
+          
+          # Add DR configuration script (runs after both clusters are ready)
+          node.vm.provision "shell", inline: generate_dr_configuration_script()
         end
       end
     end

@@ -5,7 +5,9 @@ set -e
 # At the top of the script, the parameters are:
 RZ=$1
 NODE_TYPE=$2
-CLUSTER_NAME=$3  # This is already being passed but not used!
+CLUSTER_NAME=$3
+# New parameter for retry_join addresses (comma-separated)
+RETRY_JOIN_IPS=$4
 HOSTNAME=$(hostname)
 
 echo "Setting up $HOSTNAME as $NODE_TYPE node in $RZ"
@@ -48,6 +50,23 @@ if [ "$NODE_TYPE" = "nonvoting" ]; then
 fi
 
 # Create Vault configuration with NODE_TYPE consideration
+# Function to generate retry_join blocks
+generate_retry_join_blocks() {
+  local ips="$1"
+  local blocks=""
+  
+  # Split comma-separated IPs and create retry_join blocks
+  IFS=',' read -ra IP_ARRAY <<< "$ips"
+  for ip in "${IP_ARRAY[@]}"; do
+    blocks+="  retry_join {\n    leader_api_addr = \"http://${ip}:8200\"\n  }\n"
+  done
+  
+  echo -e "$blocks"
+}
+
+# Generate retry_join configuration
+RETRY_JOIN_CONFIG=$(generate_retry_join_blocks "$RETRY_JOIN_IPS")
+
 # Create Vault configuration
 cat > /etc/vault.d/vault.hcl <<EOF
 ui = true
@@ -64,15 +83,7 @@ storage "raft" {
   autopilot_redundancy_zone = "$RZ"
   $NON_VOTER_CONFIG
   
-  retry_join {
-    leader_api_addr = "http://192.168.56.10:8200"
-  }
-  retry_join {
-    leader_api_addr = "http://192.168.56.20:8200"
-  }
-  retry_join {
-    leader_api_addr = "http://192.168.56.30:8200"
-  }
+$RETRY_JOIN_CONFIG
 }
 
 autopilot {
