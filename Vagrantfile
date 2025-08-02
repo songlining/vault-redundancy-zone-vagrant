@@ -373,7 +373,7 @@ def generate_dr_configuration_script()
     echo "DR Status:"
     vault read sys/replication/dr/status
 
-    # the next step is to ssh to each DR nodes (except the leading node) to manually unseal them.
+    # NOTE: the next/final step is to ssh to each DR nodes (except the leading node) to manually unseal them.
     
     echo "\n=== DR Configuration Complete ==="
     echo "Primary Cluster: http://#{PRI_CLUSTER_IPS.first}:8200 (DR Primary)"
