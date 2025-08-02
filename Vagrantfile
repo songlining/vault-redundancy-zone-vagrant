@@ -373,7 +373,16 @@ def generate_dr_configuration_script()
     echo "DR Status:"
     vault read sys/replication/dr/status
 
-    # NOTE: the next/final step is to ssh to each DR nodes (except the leading node) to manually unseal them.
+    # NOTE: the next/final step is to unseal the other nodes (except the first/leading node)
+    # loop through the list of ip's and set VAULT_ADDR accordingly, then unseal with primary cluster's unseal keys
+    echo "Unsealing DR nodes..."
+    for ip in #{DR_CLUSTER_IPS[1..-1].join(' ')}; do  # ✅ Proper Ruby interpolation
+      echo "Unsealing $ip..."
+      export VAULT_ADDR="http://$ip:8200"
+      vault operator unseal $(jq -r '.unseal_keys_b64[0]' /vagrant/cluster-pri-init.json) 
+      vault operator unseal $(jq -r '.unseal_keys_b64[1]' /vagrant/cluster-pri-init.json) 
+      echo "$ip unsealed successfully"
+    done
     
     echo "\n=== DR Configuration Complete ==="
     echo "Primary Cluster: http://#{PRI_CLUSTER_IPS.first}:8200 (DR Primary)"
