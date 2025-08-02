@@ -266,6 +266,10 @@ def generate_cluster_initialization_script(all_ips, cluster_config)
         sleep 5
       done
       
+      # Add delay to ensure node is fully ready for unsealing
+      echo "Waiting for $ip to stabilize after joining cluster..."
+      sleep 15
+      
       # Now unseal the node
       echo "Unsealing $ip..."
       if echo "$seal_status" | jq -e '.sealed == true' >/dev/null 2>&1; then
@@ -364,6 +368,12 @@ def generate_dr_configuration_script()
     # Wait for replication to sync
     echo "Waiting for DR replication to sync..."
     sleep 30
+
+    # print out the DR status
+    echo "DR Status:"
+    vault read sys/replication/dr/status
+
+    # the next step is to ssh to each DR nodes (except the leading node) to manually unseal them.
     
     echo "\n=== DR Configuration Complete ==="
     echo "Primary Cluster: http://#{PRI_CLUSTER_IPS.first}:8200 (DR Primary)"
