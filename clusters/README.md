@@ -6,7 +6,7 @@ This project creates two Vault Enterprise clusters:
 
 - Primary Cluster ( cluster-pri ): Main production cluster with redundancy zones
 - DR Cluster ( cluster-dr ): Disaster recovery cluster configured as DR secondary
-Both clusters support multiple virtualization providers (VMware, VirtualBox, QEMU) and are configured with Raft storage backend and autopilot for automated cluster management.
+Both clusters support multiple virtualization providers (VMware, VirtualBox, QEMU) and are configured with Raft storage backend and autopilot for automated cluster management. Only VMware provider is fully tested.  
 
 ## Architecture
 ### Primary Cluster (cluster-pri)
@@ -25,7 +25,7 @@ Both clusters support multiple virtualization providers (VMware, VirtualBox, QEM
 ## Prerequisites
 ### Required Software
 - Vagrant (latest version)
-- One of the following providers:
+- One of the following providers (only VMware is fully tested):
   - VMware Desktop (recommended)
   - VirtualBox
   - QEMU (for ARM64 Macs)
