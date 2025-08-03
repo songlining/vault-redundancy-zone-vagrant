@@ -1,0 +1,36 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+  # Use a lightweight Linux distribution
+  config.vm.box = "gyptazy/ubuntu22.04-arm64"  # For ARM64 Macs
+  # config.vm.box = "bento/ubuntu-20.04"       # For Intel Macs
+  
+  config.vm.define "router" do |router|
+    router.vm.hostname = "vault-router"
+    
+    # Network Interface 1: Connect to Subnet A (192.168.56.0/24)
+    # Changed from .1 to .10 to avoid router IP conflicts
+    router.vm.network "private_network", 
+      ip: "192.168.56.10", 
+      netmask: "255.255.255.0"
+    
+    # Network Interface 2: Connect to Subnet B (192.168.57.0/24)
+    # Changed from .1 to .10 to avoid router IP conflicts
+    router.vm.network "private_network", 
+      ip: "192.168.57.10", 
+      netmask: "255.255.255.0"
+    
+    # VMware provider configuration
+    router.vm.provider "vmware_desktop" do |v|
+      v.memory = 1024   # Minimal memory for router
+      v.cpus = 2       # Single CPU sufficient
+      v.gui = false
+      # Fix VMX warning - prevents networking issues
+      v.vmx["ethernet0.pcislotnumber"] = "160"
+    end
+    
+    # Provision the router
+    router.vm.provision "shell", path: "scripts/setup-router.sh"
+  end
+end

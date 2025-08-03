@@ -36,8 +36,8 @@ CLUSTER_PRI_CONFIG = {
     "rz1" => {
       "base_ip" => "192.168.56.10",
       "nodes" => [
-        { "name" => "vault-pri-rz1-s1", "type" => "voting", "ip_offset" => 0 },
-        { "name" => "vault-pri-rz1-s2", "type" => "nonvoting", "ip_offset" => 1 }
+        { "name" => "pri-rz1-s1", "type" => "voting", "ip_offset" => 0 },
+        { "name" => "pri-rz1-s2", "type" => "nonvoting", "ip_offset" => 1 }
       ]
     },
     # "rz2" => {
@@ -62,8 +62,8 @@ CLUSTER_DR_CONFIG = {
     "rz1" => {
       "base_ip" => "192.168.56.110",
       "nodes" => [
-        { "name" => "vault-dr-rz1-s1", "type" => "voting", "ip_offset" => 0 },
-        { "name" => "vault-dr-rz1-s2", "type" => "nonvoting", "ip_offset" => 1 }
+        { "name" => "dr-rz1-s1", "type" => "voting", "ip_offset" => 0 },
+        { "name" => "dr-rz1-s2", "type" => "nonvoting", "ip_offset" => 1 }
       ]
     },
     # "rz2" => {
