@@ -22,8 +22,8 @@ iptables -t nat -F
 iptables -t mangle -F
 
 # Allow forwarding between subnets
-iptables -A FORWARD -i eth1 -o eth2 -j ACCEPT
-iptables -A FORWARD -i eth2 -o eth1 -j ACCEPT
+iptables -A FORWARD -i ens161 -o ens256 -j ACCEPT
+iptables -A FORWARD -i ens256 -o ens161 -j ACCEPT
 
 # Allow established and related connections
 iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
@@ -46,8 +46,8 @@ cat > /etc/rc.local << 'EOF'
 iptables -F
 iptables -t nat -F
 iptables -t mangle -F
-iptables -A FORWARD -i eth1 -o eth2 -j ACCEPT
-iptables -A FORWARD -i eth2 -o eth1 -j ACCEPT
+iptables -A FORWARD -i ens161 -o ens256 -j ACCEPT
+iptables -A FORWARD -i ens256 -o ens161 -j ACCEPT
 iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
 iptables -A INPUT -i lo -j ACCEPT
 iptables -A OUTPUT -o lo -j ACCEPT

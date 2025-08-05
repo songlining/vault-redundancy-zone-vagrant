@@ -37,7 +37,7 @@ CLUSTER_PRI_CONFIG = {
       "base_ip" => "192.168.56.10",
       "nodes" => [
         { "name" => "pri-rz1-s1", "type" => "voting", "ip_offset" => 0 },
-        { "name" => "pri-rz1-s2", "type" => "nonvoting", "ip_offset" => 1 }
+        #{ "name" => "pri-rz1-s2", "type" => "nonvoting", "ip_offset" => 1 }
       ]
     },
     # "rz2" => {
@@ -60,10 +60,10 @@ CLUSTER_DR_CONFIG = {
   "cluster_name" => "cluster-dr",
   "zones" => {
     "rz1" => {
-      "base_ip" => "192.168.56.110",
+      "base_ip" => "192.168.57.10",
       "nodes" => [
         { "name" => "dr-rz1-s1", "type" => "voting", "ip_offset" => 0 },
-        { "name" => "dr-rz1-s2", "type" => "nonvoting", "ip_offset" => 1 }
+        # { "name" => "dr-rz1-s2", "type" => "nonvoting", "ip_offset" => 1 }
       ]
     },
     # "rz2" => {
@@ -420,12 +420,15 @@ Vagrant.configure("2") do |config|
   configure_qemu_provider(config)
 
   # Create Primary Cluster VMs
+  pri_port_base = 2200
+  pri_node_index = 0
   CLUSTER_PRI_CONFIG["zones"].each do |zone_name, zone_config|
     zone_config["nodes"].each do |node_config|
       config.vm.define node_config["name"] do |node|
         node.vm.hostname = node_config["name"]
         node_ip = calculate_ip(zone_config["base_ip"], node_config["ip_offset"])
         node.vm.network "private_network", ip: node_ip
+        node.vm.network "forwarded_port", guest: 22, host: pri_port_base + pri_node_index, id: "ssh", auto_correct: false
         
         # Pass primary cluster IPs for retry_join
         retry_join_ips = PRI_CLUSTER_IPS.join(",")
@@ -436,10 +439,13 @@ Vagrant.configure("2") do |config|
           node.vm.provision "shell", inline: generate_cluster_initialization_script(PRI_CLUSTER_IPS, CLUSTER_PRI_CONFIG)
         end
       end
+      pri_node_index += 1
     end
   end
 
   # Create DR Cluster VMs
+  dr_port_base = 2300
+  dr_node_index = 0
   CLUSTER_DR_CONFIG["zones"].each do |zone_name, zone_config|
     zone_config["nodes"].each do |node_config|
       config.vm.define node_config["name"] do |node|
@@ -450,6 +456,7 @@ Vagrant.configure("2") do |config|
         # Pass DR cluster IPs for retry_join
         retry_join_ips = DR_CLUSTER_IPS.join(",")
         node.vm.provision "shell", path: "scripts/setup-node.sh", args: [zone_name, node_config["type"], CLUSTER_DR_CONFIG["cluster_name"], retry_join_ips]
+        node.vm.network "forwarded_port", guest: 22, host: dr_port_base + dr_node_index, id: "ssh", auto_correct: false
         
         # Add cluster initialization script to the last node of DR cluster
         if zone_name == DR_LAST_ZONE && node_config == DR_LAST_NODE
@@ -459,6 +466,7 @@ Vagrant.configure("2") do |config|
           node.vm.provision "shell", inline: generate_dr_configuration_script()
         end
       end
+      dr_node_index += 1
     end
   end
 end
